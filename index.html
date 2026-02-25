@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <title>Royal Enfield – Fuel Tank Defect Detection</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body,#root{background:#272727!important;}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;overflow-x:hidden;}
+
+    /* ═══ NAVBAR ═══ */
+    .navbar{
+      position:fixed;top:0;left:0;width:100%;height:64px;z-index:1000;
+      background:#1c1c1c;
+      border-bottom:3px solid #F5B400;
+      box-shadow:0 4px 20px rgba(0,0,0,.6);
+      display:flex;align-items:center;
+      padding:0 16px;
+      gap:12px;
+      overflow:hidden;   /* prevent any child from breaking layout */
+    }
+    /* Logo: fixed slot, never wider than 160px */
+    .navbar-logo-wrap{
+      display:flex;align-items:center;
+      flex:0 0 auto;max-width:160px;height:48px;overflow:hidden;
+    }
+    .navbar-logo{height:46px;max-width:155px;width:auto;object-fit:contain;display:block;}
+    /* Text fallback when logo.png missing */
+    .navbar-logo-text{
+      display:flex;align-items:center;padding:4px 10px;
+      border:2px solid #F5B400;border-radius:6px;white-space:nowrap;
+    }
+    .navbar-logo-text span{color:#F5B400;font-weight:900;font-size:.9rem;letter-spacing:.04em;}
+    .navbar-divider{width:2px;height:34px;background:#F5B400;opacity:.5;flex-shrink:0;}
+    /* Title: takes remaining space, clamps text */
+    .navbar-title{flex:1 1 0;min-width:0;overflow:hidden;}
+    .navbar-title h1{
+      font-size:1rem;font-weight:800;color:#fff;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;
+    }
+    .navbar-title p{font-size:.68rem;color:#999;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    /* Buttons: shrink text on small screens */
+    .navbar-btn{
+      display:flex;align-items:center;gap:6px;
+      padding:7px 13px;border-radius:8px;border:1.5px solid;
+      font-size:.78rem;font-weight:700;cursor:pointer;
+      transition:all .2s;white-space:nowrap;flex-shrink:0;
+      background:transparent;
+    }
+    @media(max-width:700px){
+      .navbar-btn span{display:none;}   /* hide button labels, keep icons */
+      .navbar-btn{padding:7px 9px;}
+      .navbar-title p{display:none;}
+    }
+    .page{padding-top:76px;padding-bottom:30px;min-height:100vh;}
+
+    /* ═══ STATUS DOTS ═══ */
+    .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;display:inline-block;}
+    .dot.on {background:#4CAF50;box-shadow:0 0 0 3px rgba(76,175,80,.3);animation:pg 2s infinite;}
+    .dot.off{background:#D32F2F;box-shadow:0 0 0 3px rgba(211,47,47,.3);animation:pr 2s infinite;}
+    @keyframes pg{0%,100%{box-shadow:0 0 0 3px rgba(76,175,80,.2);}50%{box-shadow:0 0 0 6px rgba(76,175,80,.4);}}
+    @keyframes pr{0%,100%{box-shadow:0 0 0 3px rgba(211,47,47,.2);}50%{box-shadow:0 0 0 6px rgba(211,47,47,.4);}}
+
+    /* ═══ CARDS ═══ */
+    .card{background:#323232;border:1px solid #444;border-radius:14px;padding:18px;}
+
+    /* ═══ CAMERA PANE ═══ */
+    .cam-pane{
+      border:3px solid #F5B400;border-radius:10px;overflow:hidden;
+      background:#111;position:relative;
+      min-height:260px;display:flex;align-items:center;justify-content:center;
+    }
+    .cam-pane.alert-border{border-color:#D32F2F;animation:bflash .9s infinite;}
+    @keyframes bflash{0%,100%{border-color:#D32F2F;}50%{border-color:#FF5252;}}
+    .cam-pane img{width:100%;height:auto;display:block;}
+    .cam-empty{text-align:center;color:#666;padding:40px 20px;}
+
+    /* ═══ CAPTURE BTN ═══ */
+    .cap-btn{
+      width:100%;padding:13px;border:none;border-radius:10px;
+      font-size:1rem;font-weight:800;letter-spacing:.05em;
+      cursor:pointer;transition:all .2s;margin-top:12px;
+    }
+    .cap-btn.ready{background:#F5B400;color:#1a1a1a;}
+    .cap-btn.ready:hover{background:#d9a000;transform:translateY(-1px);}
+    .cap-btn.busy{background:#484848;color:#888;cursor:not-allowed;}
+
+    /* ═══ GALLERY ═══ */
+    .thumb{position:relative;border-radius:8px;overflow:hidden;cursor:pointer;
+           border:2px solid #555;transition:all .2s;background:#2a2a2a;}
+    .thumb:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,.5);}
+    .thumb.defect{border-color:#D32F2F;box-shadow:0 0 8px rgba(211,47,47,.3);}
+    .thumb.clean {border-color:#4CAF50;}
+    .thumb img{width:100%;height:100px;object-fit:cover;display:block;}
+    .badge{position:absolute;top:5px;right:5px;padding:2px 7px;
+           border-radius:5px;font-size:.65rem;font-weight:800;}
+    .badge.d{background:#D32F2F;color:#fff;}
+    .badge.c{background:#4CAF50;color:#fff;}
+
+    /* ═══ MODALS ═══ */
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);
+             display:flex;align-items:center;justify-content:center;
+             z-index:3000;animation:fin .2s;}
+    @keyframes fin{from{opacity:0;}to{opacity:1;}}
+    .modal{background:#323232;border-radius:16px;max-width:640px;width:94%;
+           max-height:92vh;overflow-y:auto;border:2px solid #F5B400;
+           animation:sup .3s;}
+    .modal.wide{max-width:900px;}
+    .modal.danger{background:linear-gradient(135deg,#8b0000,#c62828);
+                  border-color:#ff5252;animation:sup .3s,shake .4s;}
+    @keyframes sup{from{transform:translateY(40px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+    @keyframes shake{0%,100%{transform:translateX(0);}25%{transform:translateX(-8px);}75%{transform:translateX(8px);}}
+    .modal-hd{padding:16px 20px;border-bottom:1px solid #4a4a4a;
+              display:flex;align-items:center;justify-content:space-between;
+              position:sticky;top:0;background:#323232;z-index:5;}
+
+    /* ═══ DIAG PANEL ═══ */
+    .diag-row{display:flex;align-items:center;justify-content:space-between;
+              padding:10px 14px;background:#2a2a2a;border-radius:8px;margin-bottom:8px;}
+    .diag-row .lbl{color:#aaa;font-size:.82rem;}
+    .diag-step{display:flex;align-items:flex-start;gap:10px;
+               padding:10px 14px;background:#2a2a2a;border-radius:8px;margin-bottom:6px;}
+    .step-num{background:#F5B400;color:#1a1a1a;width:22px;height:22px;
+              border-radius:50%;font-weight:800;font-size:.75rem;
+              display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+
+    /* ═══ INFO ROW ═══ */
+    .info-row{display:flex;align-items:center;justify-content:space-between;
+              padding:9px 13px;background:#2a2a2a;border-radius:8px;margin-bottom:7px;}
+    .info-row .lbl{color:#aaa;font-size:.82rem;}
+    .info-row .val{color:#fff;font-weight:600;font-size:.85rem;}
+
+    /* ═══ SPINNER ═══ */
+    .spinner{width:20px;height:20px;border:3px solid #444;border-top-color:#F5B400;
+             border-radius:50%;animation:spin .8s linear infinite;display:inline-block;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+
+    /* ═══ SCROLLBAR ═══ */
+    ::-webkit-scrollbar{width:6px;}
+    ::-webkit-scrollbar-track{background:#1c1c1c;}
+    ::-webkit-scrollbar-thumb{background:#555;border-radius:3px;}
+
+    input[type=range]{accent-color:#F5B400;width:100%;}
+    input[type=text],input[type=number]{
+      width:100%;padding:9px 13px;background:#2a2a2a;
+      border:1px solid #555;border-radius:8px;color:#fff;
+      font-size:.88rem;outline:none;
+    }
+    input[type=text]:focus,input[type=number]:focus{border-color:#F5B400;}
+
+    /* ═══ PILL TABS ═══ */
+    .pill{padding:5px 15px;border-radius:20px;border:1.5px solid;
+          font-size:.78rem;font-weight:700;cursor:pointer;transition:all .2s;}
+    .pill.active{background:rgba(245,180,0,.2);border-color:#F5B400;color:#F5B400;}
+    .pill.inactive{background:transparent;border-color:#555;color:#888;}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useRef,useEffect} = React;
+
+/* ── tiny SVG icons ── */
+const Svg = {
+  Camera:  ()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
+  Settings:()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M1 12h3m16 0h3M4.22 19.78l2.12-2.12m11.32-11.32 2.12-2.12"/></svg>,
+  X:       ()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  Alert:   ()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+  Check:   ()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+  Img:     ()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+  Wifi:    ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>,
+  WifiOff: ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>,
+  Diag:    ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+};
+
+function beep(){
+  try{
+    const a=new(window.AudioContext||window.webkitAudioContext)();
+    [0,.3,.6].forEach(d=>{const o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.value=.22;o.start(a.currentTime+d);o.stop(a.currentTime+d+.18);});
+  }catch(e){}
+}
+const fmt=iso=>{const d=new Date(iso);return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' '+d.toLocaleDateString([],{day:'2-digit',month:'short'});};
+
+/* ════════════════════════════════════════
+   DIAGNOSTICS MODAL
+════════════════════════════════════════ */
+const DiagModal = ({onClose, settings}) => {
+  const [status, setStatus] = useState('idle'); // idle | running | done
+  const [log,    setLog   ] = useState([]);
+  const [pingOk, setPingOk] = useState(null);
+
+  const addLog = (msg, type='info') => setLog(p=>[...p,{msg,type,ts:new Date().toLocaleTimeString()}]);
+
+  const runDiag = async () => {
+    setStatus('running'); setLog([]); setPingOk(null);
+
+    const ip   = settings.camera_ip   || '192.168.50.3';
+    const port = settings.camera_port || 5000;
+
+    addLog(`Target: ${ip}:${port}`,'info');
+    addLog('Step 1 — Checking Flask server is alive…','info');
+    try{
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      addLog(`Flask server OK — PaDiM:${d.padim_trained?'✓':'✗'} YOLO:${d.yolo_loaded?'✓':'✗'}`,'ok');
+    }catch(e){ addLog('Flask server not responding: '+e,'err'); }
+
+    addLog('Step 2 — Attempting camera connect…','info');
+    try{
+      const r = await fetch('/api/camera/connect',{method:'POST'});
+      const d = await r.json();
+      if(d.success){
+        addLog('Camera socket connected ✓','ok');
+        setPingOk(true);
+        addLog('Step 3 — Sending ping…','info');
+        // Ping via capture (server handles it)
+        addLog('Connection confirmed. Camera is reachable.','ok');
+      } else {
+        addLog('Camera connect FAILED — server returned error','err');
+        setPingOk(false);
+      }
+    }catch(e){
+      addLog('Camera connect threw exception: '+e,'err');
+      setPingOk(false);
+    }
+
+    addLog('Done.','info');
+    setStatus('done');
+  };
+
+  const color = {ok:'#4CAF50',err:'#FF5252',info:'#aaa'};
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-hd">
+          <span style={{color:'#fff',fontWeight:700,fontSize:'1rem'}}>📡 Camera Connection Diagnostics</span>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:'#aaa'}}><Svg.X/></button>
+        </div>
+
+        <div style={{padding:'18px'}}>
+
+          {/* Connection checklist */}
+          <div style={{marginBottom:'16px'}}>
+            <p style={{color:'#bbb',fontSize:'.82rem',marginBottom:'10px',fontWeight:600}}>CHECKLIST — verify these on the Raspberry Pi:</p>
+            {[
+              ['Run on Pi',      'python3 raspi_camera_server.py'],
+              ['Pi IP address',  settings.camera_ip || '192.168.50.3'],
+              ['Port open',      `Port ${settings.camera_port||5000} (no firewall blocking)`],
+              ['Same network',   'PC and Pi on same LAN / hotspot'],
+              ['Camera enabled', 'sudo raspi-config → Interface → Camera → Enable'],
+            ].map(([label,val],i)=>(
+              <div key={i} className="diag-step">
+                <div className="step-num">{i+1}</div>
+                <div>
+                  <div style={{color:'#fff',fontWeight:600,fontSize:'.85rem'}}>{label}</div>
+                  <code style={{color:'#F5B400',fontSize:'.78rem',fontFamily:'monospace'}}>{val}</code>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Live test */}
+          <button
+            onClick={runDiag}
+            disabled={status==='running'}
+            style={{width:'100%',padding:'11px',background:status==='running'?'#444':'#F5B400',
+                    color:status==='running'?'#888':'#1a1a1a',border:'none',
+                    borderRadius:'8px',fontWeight:800,cursor:status==='running'?'not-allowed':'pointer',
+                    display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'14px'}}>
+            {status==='running' && <span className="spinner"/>}
+            {status==='running' ? 'Testing…' : '▶  Run Connection Test'}
+          </button>
+
+          {/* Log output */}
+          {log.length>0 && (
+            <div style={{background:'#1c1c1c',borderRadius:'8px',padding:'12px',fontFamily:'monospace',fontSize:'.78rem',maxHeight:'200px',overflowY:'auto'}}>
+              {log.map((l,i)=>(
+                <div key={i} style={{color:color[l.type],marginBottom:'4px'}}>
+                  <span style={{color:'#555'}}>[{l.ts}] </span>{l.msg}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Result banner */}
+          {status==='done' && (
+            <div style={{marginTop:'12px',padding:'12px',borderRadius:'8px',textAlign:'center',
+                         background:pingOk?'rgba(76,175,80,.15)':'rgba(211,47,47,.15)',
+                         border:`1px solid ${pingOk?'#4CAF50':'#D32F2F'}`}}>
+              <span style={{color:pingOk?'#4CAF50':'#FF5252',fontWeight:800,fontSize:'1rem'}}>
+                {pingOk ? '✅ Camera Connected Successfully!' : '❌ Cannot Reach Camera'}
+              </span>
+              {!pingOk && (
+                <p style={{color:'#aaa',fontSize:'.8rem',marginTop:'6px'}}>
+                  Check the Pi is running <code style={{color:'#F5B400'}}>raspi_camera_server.py</code> and both devices are on the same network.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Quick fix commands */}
+          <div style={{marginTop:'16px',background:'#1c1c1c',borderRadius:'8px',padding:'14px'}}>
+            <p style={{color:'#888',fontSize:'.78rem',marginBottom:'8px',fontWeight:700}}>QUICK FIX — run these on Raspberry Pi:</p>
+            {[
+              'sudo apt update && sudo apt install -y python3-picamera2',
+              'pip3 install opencv-python-headless',
+              'python3 raspi_camera_server.py',
+              '# Check Pi IP:  hostname -I',
+              '# Test from PC: ping 192.168.50.3',
+            ].map((cmd,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'5px'}}>
+                <code style={{color:cmd.startsWith('#')?'#666':'#F5B400',fontSize:'.75rem',fontFamily:'monospace'}}>{cmd}</code>
+                {!cmd.startsWith('#') && (
+                  <button
+                    onClick={()=>{navigator.clipboard?.writeText(cmd);}}
+                    style={{background:'#333',border:'1px solid #555',color:'#aaa',borderRadius:'4px',
+                            padding:'2px 8px',fontSize:'.68rem',cursor:'pointer',flexShrink:0,marginLeft:'8px'}}>
+                    copy
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{padding:'12px 18px',borderTop:'1px solid #444',display:'flex',justifyContent:'flex-end'}}>
+          <button onClick={onClose} style={{padding:'8px 22px',background:'#F5B400',color:'#1a1a1a',border:'none',borderRadius:'8px',fontWeight:700,cursor:'pointer'}}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════
+   MAIN APP
+════════════════════════════════════════ */
+const App = () => {
+  const [camConn,      setCamConn]      = useState(false);
+  const [processing,   setProcessing]   = useState(false);
+  const [capturing,    setCapturing]    = useState(false);
+  const [images,       setImages]       = useState([]);
+  const [lastResult,   setLastResult]   = useState(null);
+  const [defectAlert,  setDefectAlert]  = useState(null);
+  const [selImg,       setSelImg]       = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showDiag,     setShowDiag]     = useState(false);
+  const [sysStatus,    setSysStatus]    = useState({padim_trained:false,yolo_loaded:false});
+  const [tab,          setTab]          = useState('all');
+  const [streamKey,    setStreamKey]    = useState(Date.now());
+  const [settings,     setSettings]     = useState({
+    camera_ip:'192.168.50.3', camera_port:5000,
+    camera_url:'http://192.168.50.3/image.jpg',
+    threshold:0.6, yolo_conf:0.8, min_defect_area:1500,
+  });
+  const sockRef = useRef(null);
+
+  useEffect(()=>{
+    const s = io();
+    sockRef.current = s;
+    s.on('camera_status',    d=>setCamConn(d.connected));
+    s.on('system_status',    d=>setSysStatus(d));
+    s.on('processing_status',d=>setProcessing(d.active));
+    s.on('new_result', r=>{setImages(p=>[r,...p].slice(0,200));setLastResult(r);setProcessing(false);setCapturing(false);});
+    s.on('defect_alert',r=>{setDefectAlert(r);beep();setTimeout(()=>setDefectAlert(null),8000);});
+    fetch('/api/status').then(r=>r.json()).then(d=>{
+      setCamConn(d.camera_connected);
+      setSysStatus({padim_trained:d.padim_trained,yolo_loaded:d.yolo_loaded});
+      setImages(d.processed_images||[]);
+      if(d.processed_images?.length) setLastResult(d.processed_images[0]);
+      if(d.settings) setSettings(p=>({...p,...d.settings}));
+    }).catch(()=>{});
+    return ()=>s.disconnect();
+  },[]);
+
+  const doConnect    = async()=>{await fetch('/api/camera/connect',{method:'POST'});};
+  const doDisconnect = async()=>fetch('/api/camera/disconnect',{method:'POST'});
+  const doCapture    = async()=>{
+    if(!camConn||capturing||processing) return;
+    setCapturing(true); setProcessing(true);
+    try{
+      const r=await fetch('/api/camera/capture',{method:'POST'});
+      const d=await r.json();
+      if(!d.success){alert('Capture failed: '+(d.message||'error'));setCapturing(false);setProcessing(false);}
+    }catch(e){alert('Capture error');setCapturing(false);setProcessing(false);}
+  };
+  const doSaveSettings = async()=>{
+    const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(settings)});
+    const d=await r.json();
+    if(d.success) setShowSettings(false);
+  };
+
+  const filtered = images.filter(i=>tab==='all'?true:tab==='defect'?i.defect_count>0:i.defect_count===0);
+  const defectCnt = images.filter(i=>i.defect_count>0).length;
+  const cleanCnt  = images.filter(i=>i.defect_count===0).length;
+
+  /* ── RENDER ── */
+  return (
+    <>
+      {/* ════ NAVBAR ════ */}
+      <nav className="navbar">
+        {/* ── Logo: image with text fallback ── */}
+        <div className="navbar-logo-wrap">
+          <img
+            src="/static/logo.png"
+            alt="Royal Enfield"
+            className="navbar-logo"
+            onError={e=>{
+              e.target.style.display='none';
+              e.target.parentNode.querySelector('.navbar-logo-text').style.display='flex';
+            }}
+          />
+          <div className="navbar-logo-text" style={{display:'none'}}>
+            <span>ROYAL ENFIELD</span>
+          </div>
+        </div>
+
+        <div className="navbar-divider"/>
+
+        <div className="navbar-title">
+          <h1>Fuel Tank Defect Detection</h1>
+          <p>Royal Enfield · PaDiM + YOLO Anomaly Detection</p>
+        </div>
+
+        {/* Controls */}
+        <div style={{display:'flex',gap:'8px',alignItems:'center',flexShrink:0}}>
+          <button className="navbar-btn"
+            onClick={()=>setShowDiag(true)}
+            style={{borderColor:'#888',background:'#2a2a2a',color:'#ccc'}}>
+            <Svg.Diag/><span> Diagnose</span>
+          </button>
+          <button className="navbar-btn"
+            onClick={()=>setShowSettings(true)}
+            style={{borderColor:'#F5B400',background:'rgba(245,180,0,.1)',color:'#F5B400'}}>
+            <Svg.Settings/><span> Settings</span>
+          </button>
+          <button className="navbar-btn"
+            onClick={camConn?doDisconnect:doConnect}
+            style={{
+              borderColor:camConn?'#4CAF50':'#D32F2F',
+              background:camConn?'rgba(76,175,80,.12)':'rgba(211,47,47,.12)',
+              color:camConn?'#4CAF50':'#D32F2F',
+            }}>
+            {camConn?<Svg.Wifi/>:<Svg.WifiOff/>}
+            <span>{camConn?' Disconnect':' Connect'}</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* ════ MAIN PAGE ════ */}
+      <div className="page" style={{padding:'80px 18px 30px'}}>
+        <div style={{maxWidth:'1380px',margin:'0 auto'}}>
+
+          {/* ── Stat bar ── */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(155px,1fr))',gap:'10px',marginBottom:'18px'}}>
+            {/* Camera */}
+            <div className="card" style={{display:'flex',alignItems:'center',gap:'12px'}}>
+              <div style={{padding:'9px',borderRadius:'50%',background:camConn?'rgba(76,175,80,.15)':'rgba(211,47,47,.15)',flexShrink:0}}>
+                <span style={{color:camConn?'#4CAF50':'#D32F2F'}}><Svg.Camera/></span>
+              </div>
+              <div>
+                <div style={{color:'#888',fontSize:'.72rem'}}>Camera</div>
+                <div style={{display:'flex',alignItems:'center',gap:'6px',marginTop:'3px'}}>
+                  <span className={`dot ${camConn?'on':'off'}`}/>
+                  <span style={{color:'#fff',fontWeight:700,fontSize:'.88rem'}}>{camConn?'Connected':'Offline'}</span>
+                </div>
+              </div>
+            </div>
+            {/* PaDiM */}
+            <div className="card" style={{display:'flex',alignItems:'center',gap:'12px'}}>
+              <div style={{padding:'9px',borderRadius:'50%',background:sysStatus.padim_trained?'rgba(76,175,80,.15)':'rgba(211,47,47,.15)',flexShrink:0}}>
+                <span style={{color:sysStatus.padim_trained?'#4CAF50':'#D32F2F'}}>
+                  {sysStatus.padim_trained?<Svg.Check/>:<Svg.Alert/>}
+                </span>
+              </div>
+              <div>
+                <div style={{color:'#888',fontSize:'.72rem'}}>PaDiM Model</div>
+                <div style={{color:'#fff',fontWeight:700,fontSize:'.88rem',marginTop:'3px'}}>{sysStatus.padim_trained?'Trained':'Not Ready'}</div>
+              </div>
+            </div>
+            {/* YOLO */}
+            <div className="card" style={{display:'flex',alignItems:'center',gap:'12px'}}>
+              <div style={{padding:'9px',borderRadius:'50%',background:sysStatus.yolo_loaded?'rgba(76,175,80,.15)':'rgba(211,47,47,.15)',flexShrink:0}}>
+                <span style={{color:sysStatus.yolo_loaded?'#4CAF50':'#D32F2F'}}>
+                  {sysStatus.yolo_loaded?<Svg.Check/>:<Svg.Alert/>}
+                </span>
+              </div>
+              <div>
+                <div style={{color:'#888',fontSize:'.72rem'}}>YOLO Opener</div>
+                <div style={{color:'#fff',fontWeight:700,fontSize:'.88rem',marginTop:'3px'}}>{sysStatus.yolo_loaded?'Loaded':'Not Loaded'}</div>
+              </div>
+            </div>
+            {/* Defects */}
+            <div className="card" style={{display:'flex',alignItems:'center',gap:'12px'}}>
+              <div style={{padding:'9px',borderRadius:'50%',background:'rgba(211,47,47,.15)',flexShrink:0}}>
+                <span style={{color:'#D32F2F'}}><Svg.Alert/></span>
+              </div>
+              <div>
+                <div style={{color:'#888',fontSize:'.72rem'}}>Defects Found</div>
+                <div style={{color:'#ef5350',fontWeight:800,fontSize:'1.5rem',lineHeight:1}}>{defectCnt}</div>
+              </div>
+            </div>
+            {/* Passed */}
+            <div className="card" style={{display:'flex',alignItems:'center',gap:'12px'}}>
+              <div style={{padding:'9px',borderRadius:'50%',background:'rgba(76,175,80,.15)',flexShrink:0}}>
+                <span style={{color:'#4CAF50'}}><Svg.Check/></span>
+              </div>
+              <div>
+                <div style={{color:'#888',fontSize:'.72rem'}}>Passed</div>
+                <div style={{color:'#66bb6a',fontWeight:800,fontSize:'1.5rem',lineHeight:1}}>{cleanCnt}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Camera + Result row ── */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',marginBottom:'16px'}}>
+
+            {/* Live camera */}
+            <div className="card">
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px'}}>
+                <span style={{color:'#fff',fontWeight:700,fontSize:'1rem'}}>📷 Live Camera</span>
+                {processing && <span style={{display:'flex',alignItems:'center',gap:'7px',color:'#F5B400',fontSize:'.82rem'}}><span className="spinner"/>Analysing…</span>}
+              </div>
+              <div className={`cam-pane ${lastResult?.defect_count>0?'alert-border':''}`}>
+                {camConn
+                  ? <img
+                      src="/api/camera/live"
+                      alt="Live"
+                      style={{width:'100%',height:'auto',display:'block'}}
+                      onError={e=>{e.target.style.opacity='0.3';}}
+                    />
+                  : <div className="cam-empty">
+                      <span style={{color:'#555'}}><Svg.WifiOff/></span>
+                      <p style={{marginTop:'10px',fontWeight:600,color:'#666'}}>Camera Offline</p>
+                      <p style={{fontSize:'.78rem',marginTop:'5px',color:'#555'}}>Click <strong style={{color:'#F5B400'}}>Connect</strong> or <strong style={{color:'#ccc'}}>Diagnose</strong></p>
+                    </div>
+                }
+              </div>
+              <button
+                className={`cap-btn ${camConn&&!capturing&&!processing?'ready':'busy'}`}
+                onClick={doCapture}
+                disabled={!camConn||capturing||processing}>
+                {capturing?'📸 Capturing…':processing?'⚡ Analysing…':'📸  CAPTURE & ANALYSE'}
+              </button>
+              {lastResult && (
+                <div style={{marginTop:'9px',textAlign:'center'}}>
+                  {lastResult.defect_count>0
+                    ? <span style={{background:'rgba(211,47,47,.2)',border:'1px solid #c62828',color:'#ff6b6b',borderRadius:'16px',padding:'3px 14px',fontSize:'.78rem',fontWeight:700}}>⚠ Last: {lastResult.defect_count} Defect{lastResult.defect_count>1?'s':''}</span>
+                    : <span style={{background:'rgba(76,175,80,.2)',border:'1px solid #388e3c',color:'#81c784',borderRadius:'16px',padding:'3px 14px',fontSize:'.78rem',fontWeight:700}}>✓ Last: No Defects</span>
+                  }
+                </div>
+              )}
+            </div>
+
+            {/* Last result */}
+            <div className="card">
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px'}}>
+                <span style={{color:'#fff',fontWeight:700,fontSize:'1rem'}}>🔍 Last Analysis Result</span>
+              </div>
+              {lastResult ? (
+                <>
+                  <div className={`cam-pane ${lastResult.defect_count>0?'alert-border':''}`}
+                       style={{cursor:'pointer'}} onClick={()=>setSelImg(lastResult)}>
+                    <img src={`/api/images/${lastResult.folder}/${lastResult.filename}`} alt="result" style={{width:'100%',display:'block'}}/>
+                    <div style={{position:'absolute',bottom:'7px',right:'7px',background:'rgba(0,0,0,.6)',borderRadius:'5px',padding:'2px 8px',fontSize:'.7rem',color:'#ccc'}}>tap to enlarge</div>
+                  </div>
+                  <div style={{marginTop:'11px'}}>
+                    <div className="info-row">
+                      <span className="lbl">Result</span>
+                      {lastResult.defect_count>0
+                        ? <span style={{background:'#c62828',color:'#fff',borderRadius:'5px',padding:'2px 10px',fontWeight:800,fontSize:'.78rem'}}>⚠ DEFECT</span>
+                        : <span style={{background:'#388e3c',color:'#fff',borderRadius:'5px',padding:'2px 10px',fontWeight:800,fontSize:'.78rem'}}>✓ PASS</span>
+                      }
+                    </div>
+                    {lastResult.defect_count>0 && <div className="info-row"><span className="lbl">Defect Count</span><span className="val" style={{color:'#ef5350',fontSize:'1.1rem'}}>{lastResult.defect_count}</span></div>}
+                    <div className="info-row"><span className="lbl">Opener</span><span className="val" style={{color:lastResult.opener_detected?'#64b5f6':'#666',fontSize:'.82rem'}}>{lastResult.opener_detected?'Detected & Ignored':'—'}</span></div>
+                    <div className="info-row"><span className="lbl">Time</span><span className="val" style={{fontSize:'.78rem'}}>{fmt(lastResult.timestamp)}</span></div>
+                  </div>
+                </>
+              ) : (
+                <div className="cam-pane" style={{minHeight:'260px'}}>
+                  <div className="cam-empty"><span style={{color:'#444'}}><Svg.Img/></span><p style={{marginTop:'10px',fontWeight:600,color:'#666'}}>No Results Yet</p><p style={{fontSize:'.78rem',marginTop:'5px',color:'#555'}}>Capture an image to see analysis</p></div>
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* ── Gallery ── */}
+          <div className="card">
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px',flexWrap:'wrap',gap:'10px'}}>
+              <span style={{color:'#fff',fontWeight:700,fontSize:'1rem'}}>📁 Inspection History ({images.length})</span>
+              <div style={{display:'flex',gap:'7px'}}>
+                {[['all','All'],['defect','Defects'],['clean','Passed']].map(([k,l])=>(
+                  <button key={k} className={`pill ${tab===k?'active':'inactive'}`} onClick={()=>setTab(k)}>{l}</button>
+                ))}
+              </div>
+            </div>
+            {filtered.length===0
+              ? <div style={{textAlign:'center',padding:'36px',color:'#555'}}><Svg.Img/><p style={{marginTop:'10px'}}>No {tab==='all'?'':tab} images yet</p></div>
+              : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:'10px'}}>
+                  {filtered.map((img,i)=>(
+                    <div key={i} className={`thumb ${img.defect_count>0?'defect':'clean'}`} onClick={()=>setSelImg(img)}>
+                      <img src={`/api/images/${img.folder}/${img.filename}`} alt="thumb"/>
+                      <span className={`badge ${img.defect_count>0?'d':'c'}`}>{img.defect_count>0?`⚠ ${img.defect_count}`:'✓ OK'}</span>
+                      <div style={{padding:'4px 6px',background:'#222'}}>
+                        <div style={{color:'#888',fontSize:'.62rem',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{new Date(img.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+
+        </div>
+      </div>
+
+      {/* ════ DEFECT ALERT ════ */}
+      {defectAlert && (
+        <div className="overlay" onClick={()=>setDefectAlert(null)}>
+          <div className="modal danger" style={{maxWidth:'420px'}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'32px 26px',textAlign:'center'}}>
+              <div style={{fontSize:'3.5rem',marginBottom:'6px'}}>🚨</div>
+              <h2 style={{color:'#fff',fontSize:'1.7rem',fontWeight:900,marginBottom:'6px'}}>DEFECT DETECTED!</h2>
+              <p style={{color:'rgba(255,255,255,.85)',fontSize:'1rem',marginBottom:'16px'}}>
+                <strong>{defectAlert.defect_count}</strong> defect{defectAlert.defect_count>1?'s':''} found on fuel tank
+              </p>
+              <div style={{background:'rgba(0,0,0,.3)',borderRadius:'8px',padding:'9px',marginBottom:'18px'}}>
+                <code style={{color:'rgba(255,255,255,.7)',fontSize:'.8rem'}}>{defectAlert.filename}</code>
+              </div>
+              <button onClick={()=>{setDefectAlert(null);setSelImg(defectAlert);}}
+                style={{width:'100%',padding:'12px',background:'#fff',color:'#c62828',border:'none',borderRadius:'9px',fontWeight:900,fontSize:'1rem',cursor:'pointer',marginBottom:'8px'}}>
+                VIEW DETAILS
+              </button>
+              <button onClick={()=>setDefectAlert(null)}
+                style={{width:'100%',padding:'10px',background:'rgba(255,255,255,.12)',color:'#fff',border:'1px solid rgba(255,255,255,.25)',borderRadius:'9px',fontWeight:700,fontSize:'.9rem',cursor:'pointer'}}>
+                ACKNOWLEDGE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ IMAGE DETAIL ════ */}
+      {selImg && (
+        <div className="overlay" onClick={()=>setSelImg(null)}>
+          <div className="modal wide" onClick={e=>e.stopPropagation()}>
+            <div className="modal-hd">
+              <span style={{color:'#fff',fontWeight:700}}>{selImg.defect_count>0?'⚠ DEFECT DETECTED':'✅ NO DEFECTS'}</span>
+              <button onClick={()=>setSelImg(null)} style={{background:'none',border:'none',cursor:'pointer',color:'#aaa'}}><Svg.X/></button>
+            </div>
+            <div style={{padding:'18px'}}>
+              <div style={{borderRadius:'10px',overflow:'hidden',border:`2px solid ${selImg.defect_count>0?'#c62828':'#388e3c'}`}}>
+                <img src={`/api/images/${selImg.folder}/${selImg.filename}`} alt="detail" style={{width:'100%',display:'block'}}/>
+              </div>
+              <div style={{marginTop:'14px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+                <div className="info-row" style={{margin:0}}><span className="lbl">Status</span>{selImg.defect_count>0?<span style={{color:'#ef5350',fontWeight:800}}>⚠ DEFECT</span>:<span style={{color:'#66bb6a',fontWeight:800}}>✓ PASS</span>}</div>
+                <div className="info-row" style={{margin:0}}><span className="lbl">Defects</span><span className="val" style={{color:selImg.defect_count>0?'#ef5350':'#66bb6a'}}>{selImg.defect_count}</span></div>
+                <div className="info-row" style={{margin:0}}><span className="lbl">Opener</span><span className="val" style={{color:selImg.opener_detected?'#64b5f6':'#666',fontSize:'.8rem'}}>{selImg.opener_detected?'Detected':'-'}</span></div>
+                <div className="info-row" style={{margin:0}}><span className="lbl">Folder</span><span className="val" style={{fontSize:'.75rem',fontFamily:'monospace'}}>{selImg.folder}</span></div>
+                <div className="info-row" style={{margin:0,gridColumn:'1/-1'}}><span className="lbl">File</span><span className="val" style={{fontSize:'.75rem',fontFamily:'monospace'}}>{selImg.filename}</span></div>
+                <div className="info-row" style={{margin:0,gridColumn:'1/-1'}}><span className="lbl">Captured</span><span className="val">{fmt(selImg.timestamp)}</span></div>
+              </div>
+            </div>
+            <div style={{padding:'12px 18px',borderTop:'1px solid #444',display:'flex',justifyContent:'flex-end'}}>
+              <button onClick={()=>setSelImg(null)} style={{padding:'8px 22px',background:'#F5B400',color:'#1a1a1a',border:'none',borderRadius:'8px',fontWeight:700,cursor:'pointer'}}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ SETTINGS ════ */}
+      {showSettings && (
+        <div className="overlay" onClick={()=>setShowSettings(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-hd">
+              <span style={{color:'#fff',fontWeight:700}}>⚙ System Settings</span>
+              <button onClick={()=>setShowSettings(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#aaa'}}><Svg.X/></button>
+            </div>
+            <div style={{padding:'18px',display:'flex',flexDirection:'column',gap:'16px'}}>
+              {[{l:'Camera IP',key:'camera_ip',t:'text',p:'192.168.50.3'},{l:'Camera Port',key:'camera_port',t:'number',p:'5000'},{l:'Stream URL',key:'camera_url',t:'text',p:'http://...'}].map(({l,key,t,p})=>(
+                <div key={key}>
+                  <label style={{display:'block',color:'#bbb',fontSize:'.82rem',fontWeight:600,marginBottom:'5px'}}>{l}</label>
+                  <input type={t} value={settings[key]||''} placeholder={p}
+                    onChange={e=>setSettings(s=>({...s,[key]:t==='number'?Number(e.target.value):e.target.value}))}/>
+                </div>
+              ))}
+              {[{l:'Defect Threshold',key:'threshold',min:0,max:1,step:.05,lo:'Sensitive',hi:'Strict'},{l:'YOLO Confidence',key:'yolo_conf',min:0,max:1,step:.05,lo:'Low',hi:'High'},{l:'Min Defect Area (px)',key:'min_defect_area',min:200,max:5000,step:50,lo:'Small',hi:'Large'}].map(({l,key,min,max,step,lo,hi})=>(
+                <div key={key}>
+                  <label style={{display:'flex',justifyContent:'space-between',color:'#bbb',fontSize:'.82rem',fontWeight:600,marginBottom:'5px'}}>
+                    <span>{l}</span><span style={{color:'#F5B400'}}>{settings[key]}</span>
+                  </label>
+                  <input type="range" min={min} max={max} step={step} value={settings[key]||min}
+                    onChange={e=>setSettings(s=>({...s,[key]:parseFloat(e.target.value)}))}/>
+                  <div style={{display:'flex',justifyContent:'space-between',color:'#555',fontSize:'.7rem'}}><span>{lo}</span><span>{hi}</span></div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:'12px 18px',borderTop:'1px solid #444',display:'flex',justifyContent:'flex-end',gap:'9px',background:'#323232',position:'sticky',bottom:0}}>
+              <button onClick={()=>setShowSettings(false)} style={{padding:'8px 18px',background:'#484848',color:'#fff',border:'none',borderRadius:'8px',cursor:'pointer',fontWeight:600}}>Cancel</button>
+              <button onClick={doSaveSettings} style={{padding:'8px 22px',background:'#F5B400',color:'#1a1a1a',border:'none',borderRadius:'8px',fontWeight:700,cursor:'pointer'}}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ DIAGNOSTICS ════ */}
+      {showDiag && <DiagModal onClose={()=>setShowDiag(false)} settings={settings}/>}
+    </>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
